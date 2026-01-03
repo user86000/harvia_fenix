@@ -124,21 +124,21 @@ SENSOR_DESCRIPTIONS: tuple[HarviaSensorDescription, ...] = (
     ),
     HarviaSensorDescription(
         key="target_temperature",
-        name="Target Temperature",
+        name="Profile Target Temperature",
         native_unit_of_measurement="°C",
         icon="mdi:thermometer-check",
         value_fn=lambda st: _as_float(_pick(st, "target_temperature")),
     ),
     HarviaSensorDescription(
         key="humidity_setpoint",
-        name="Target Humidity",
+        name="Profile Target Humidity",
         native_unit_of_measurement="%",
         icon="mdi:water-percent",
         value_fn=lambda st: _as_float(_pick(st, "humidity_setpoint")),
     ),
     HarviaSensorDescription(
         key="heater_on_raw",
-        name="Heater On",
+        name="Profile Heater On",
         icon="mdi:radiator",
         value_fn=lambda st: _as_bool(_pick(st, "heater_on_raw")),
     ),
@@ -156,7 +156,7 @@ SENSOR_DESCRIPTIONS: tuple[HarviaSensorDescription, ...] = (
     ),
     HarviaSensorDescription(
         key="steamer_on_raw",
-        name="Steamer On",
+        name="Profile Steamer On",
         icon="mdi:cloud",
         value_fn=lambda st: _as_bool(_pick(st, "steamer_on_raw")),
     ),
@@ -168,7 +168,7 @@ SENSOR_DESCRIPTIONS: tuple[HarviaSensorDescription, ...] = (
     ),
     HarviaSensorDescription(
         key="light_on_raw",
-        name="Light On",
+        name="Profile Light On",
         icon="mdi:lightbulb",
         value_fn=lambda st: _as_bool(_pick(st, "light_on_raw")),
     ),
