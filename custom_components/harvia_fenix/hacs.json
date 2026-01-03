@@ -1,0 +1,7 @@
+{
+  "name": "Harvia Fenix",
+  "content_in_root": false,
+  "render_readme": true,
+  "domains": ["harvia_fenix"],
+  "homeassistant": "2024.6.0"
+}
