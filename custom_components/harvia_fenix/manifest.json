@@ -1,1 +1,12 @@
-
+{
+  "domain": "harvia_fenix",
+  "name": "Harvia Fenix",
+  "version": "0.1.0",
+  "documentation": "https://github.com/<DEIN_USER>/<DEIN_REPO>",
+  "issue_tracker": "https://github.com/<DEIN_USER>/<DEIN_REPO>/issues",
+  "codeowners": ["@<DEIN_GITHUB_USER>"],
+  "config_flow": true,
+  "iot_class": "cloud_polling",
+  "requirements": [],
+  "loggers": ["custom_components.harvia_fenix"]
+}
