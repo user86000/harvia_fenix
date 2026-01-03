@@ -1,8 +1,9 @@
-import logging
-
 DOMAIN = "harvia_fenix"
-_LOGGER = logging.getLogger(f"custom_components.{DOMAIN}")
 
-STORAGE_KEY = DOMAIN
-STORAGE_VERSION = 1
-REGION = "eu-central-1"
+PLATFORMS = ["sensor"]
+
+CONF_ENDPOINTS_URL = "endpoints_url"
+DEFAULT_ENDPOINTS_URL = "https://api.harvia.io/endpoints"
+
+DATA_API = "api"
+DATA_COORDINATOR = "coordinator"
