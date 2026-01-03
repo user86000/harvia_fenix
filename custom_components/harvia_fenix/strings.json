@@ -1,0 +1,22 @@
+{
+  "title": "Harvia Fenix",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Harvia Fenix",
+        "description": "Melde dich mit deinem Harvia Konto an.",
+        "data": {
+          "username": "E-Mail",
+          "password": "Passwort"
+        }
+      }
+    },
+    "error": {
+      "auth": "Anmeldung fehlgeschlagen",
+      "unknown": "Unbekannter Fehler"
+    },
+    "abort": {
+      "already_configured": "Bereits konfiguriert"
+    }
+  }
+}
