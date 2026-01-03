@@ -1,0 +1,22 @@
+{
+  "title": "Harvia Fenix",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Harvia Fenix",
+        "description": "Sign in with your Harvia account.",
+        "data": {
+          "username": "Email",
+          "password": "Password"
+        }
+      }
+    },
+    "error": {
+      "auth": "Authentication failed",
+      "unknown": "Unknown error"
+    },
+    "abort": {
+      "already_configured": "Already configured"
+    }
+  }
+}
