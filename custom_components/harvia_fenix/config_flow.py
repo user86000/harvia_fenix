@@ -10,7 +10,16 @@ from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.exceptions import HomeAssistantError
 
 from .api import HarviaSaunaAPI, HarviaAuthError
-from .constants import DOMAIN, CONF_ENDPOINTS_URL, DEFAULT_ENDPOINTS_URL
+from .constants import (
+    DOMAIN,
+    CONF_ENDPOINTS_URL,
+    DEFAULT_ENDPOINTS_URL,
+    CONF_DATA_POLL_INTERVAL,
+    CONF_DEVICE_POLL_INTERVAL,
+    POLL_INTERVAL_OPTIONS,
+    DEFAULT_DATA_POLL_LABEL,
+    DEFAULT_DEVICE_POLL_LABEL,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -107,12 +116,37 @@ class HarviaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         schema = vol.Schema({vol.Required(CONF_PASSWORD): str})
         return self.async_show_form(step_id="reauth_confirm", data_schema=schema, errors=errors)
 
+    @staticmethod
+    def async_get_options_flow(config_entry: config_entries.ConfigEntry):
+        return HarviaOptionsFlowHandler(config_entry)
+
+
+class HarviaOptionsFlowHandler(config_entries.OptionsFlow):
+    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
+        self._config_entry = config_entry
+
+    async def async_step_init(self, user_input=None):
+        if user_input is not None:
+            return self.async_create_entry(title="", data=user_input)
+
+        # store labels like "30s"
+        data_default = self._config_entry.options.get(CONF_DATA_POLL_INTERVAL, DEFAULT_DATA_POLL_LABEL)
+        device_default = self._config_entry.options.get(CONF_DEVICE_POLL_INTERVAL, DEFAULT_DEVICE_POLL_LABEL)
+
+        # Simple dropdown via vol.In (most compatible; avoids 400)
+        labels = list(POLL_INTERVAL_OPTIONS.keys())
+
+        schema = vol.Schema(
+            {
+                vol.Required(CONF_DATA_POLL_INTERVAL, default=data_default): vol.In(labels),
+                vol.Required(CONF_DEVICE_POLL_INTERVAL, default=device_default): vol.In(labels),
+            }
+        )
+
+        return self.async_show_form(step_id="init", data_schema=schema)
+
 
 class CannotConnect(HomeAssistantError):
     def __init__(self, reason: str = "cannot_connect") -> None:
         self.reason = reason
         super().__init__(reason)
-
-
-
-
