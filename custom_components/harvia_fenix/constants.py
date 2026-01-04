@@ -11,8 +11,6 @@ CONF_DEVICE_POLL_INTERVAL = "device_poll_interval"   # stored as label e.g. "2mi
 
 # Dropdown labels -> seconds
 POLL_INTERVAL_OPTIONS = {
-    "5s": 5,
-    "10s": 10,
     "30s": 30,
     "1min": 60,
     "2min": 120,
