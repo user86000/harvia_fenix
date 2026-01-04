@@ -29,9 +29,10 @@ def _parse_interval(value: Any, default_label: str) -> int:
         return int(POLL_INTERVAL_OPTIONS.get(value, POLL_INTERVAL_OPTIONS[default_label]))
     return int(POLL_INTERVAL_OPTIONS[default_label])
 
+FIXED_TICK_SECONDS = 30  # <-- Coordinator läuft immer alle 30s
 
 class HarviaCoordinator(DataUpdateCoordinator[dict[str, Any]]):
-    def __init__(self, hass: HomeAssistant, entry: ConfigEntry, api: HarviaSaunaAPI) -> None:
+    def __init__(self, hass, entry, api) -> None:
         self.api = api
 
         self._data_interval = _parse_interval(
@@ -47,18 +48,19 @@ class HarviaCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             hass,
             _LOGGER,
             name="harvia_fenix",
-            update_interval=timedelta(seconds=self._data_interval),
+            update_interval=timedelta(seconds=FIXED_TICK_SECONDS),
         )
 
         self._last_device_refresh: float = 0.0
         self._last_data_refresh: float = 0.0
 
-        self._devices: list[HarviaDevice] = []
+        self._devices = []
         self._states: dict[str, Any] = {}
         self._latest_data: dict[str, Any] = {}
 
         _LOGGER.info(
-            "Harvia polling configured: data=%ss device/state=%ss",
+            "Harvia polling configured: tick=%ss data=%ss device/state=%ss",
+            FIXED_TICK_SECONDS,
             self._data_interval,
             self._device_interval,
         )
@@ -67,6 +69,7 @@ class HarviaCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         now = time.monotonic()
 
         try:
+            # Devices + State nach device_interval
             if (not self._devices) or (now - self._last_device_refresh) >= self._device_interval:
                 _LOGGER.debug("Harvia: refreshing devices/state (interval=%ss)", self._device_interval)
                 self._devices = await self.api.get_devices()
@@ -76,6 +79,7 @@ class HarviaCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             else:
                 _LOGGER.debug("Harvia: skipping devices/state (cached)")
 
+            # Latest data nach data_interval
             if (now - self._last_data_refresh) >= self._data_interval:
                 _LOGGER.debug("Harvia: refreshing latest-data (interval=%ss)", self._data_interval)
                 for dev in self._devices:
@@ -97,3 +101,4 @@ class HarviaCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             raise ConfigEntryAuthFailed(str(err)) from err
         except Exception as err:
             raise UpdateFailed(f"Harvia update failed: {err}") from err
+
