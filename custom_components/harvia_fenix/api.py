@@ -54,6 +54,7 @@ class HarviaSaunaAPI:
         self._endpoints_loaded = False
         self._rest_generics_base: str | None = None
         self._rest_device_base: str | None = None
+        self._rest_data_base: str | None = None  # NEW
 
         self._auth_lock = asyncio.Lock()
         self._expiry_skew = 60  # refresh 60s before expiry
@@ -71,7 +72,8 @@ class HarviaSaunaAPI:
 
         if not self._rest_generics_base or not self._rest_device_base:
             raise RuntimeError(
-                f"Harvia endpoints not initialized (generics={self._rest_generics_base}, device={self._rest_device_base})"
+                "Harvia endpoints not initialized "
+                f"(generics={self._rest_generics_base}, device={self._rest_device_base}, data={self._rest_data_base})"
             )
 
         if not self._tokens.id_token:
@@ -90,6 +92,12 @@ class HarviaSaunaAPI:
     # -----------------------------
 
     async def _load_endpoints(self) -> None:
+        """
+        Parses Harvia endpoints payload:
+          endpoints.RestApi.generics.https
+          endpoints.RestApi.device.https
+          endpoints.RestApi.data.https
+        """
         assert self._session is not None
 
         _LOGGER.debug("Harvia: loading endpoints from %s", self._endpoints_url)
@@ -106,19 +114,25 @@ class HarviaSaunaAPI:
 
         try:
             rest_api = data["endpoints"]["RestApi"]
+
             rest_generic = rest_api["generics"]["https"]
             rest_device = rest_api["device"]["https"]
+
+            rest_data = rest_api.get("data", {}).get("https")
         except Exception as err:
             raise RuntimeError(f"Endpoints parsing failed: {data}") from err
 
         self._rest_generics_base = str(rest_generic).rstrip("/")
         self._rest_device_base = str(rest_device).rstrip("/")
+        self._rest_data_base = str(rest_data).rstrip("/") if rest_data else None
+
         self._endpoints_loaded = True
 
         _LOGGER.info(
-            "Harvia endpoints resolved: generics=%s device=%s",
+            "Harvia endpoints resolved: generics=%s device=%s data=%s",
             self._rest_generics_base,
             self._rest_device_base,
+            self._rest_data_base,
         )
 
     # -----------------------------
@@ -244,8 +258,8 @@ class HarviaSaunaAPI:
 
         if not base:
             raise RuntimeError(
-                f"Harvia rest_call base URL is missing. "
-                f"Endpoints loaded={self._endpoints_loaded} generics={self._rest_generics_base} device={self._rest_device_base}"
+                "Harvia rest_call base URL is missing. "
+                f"(generics={self._rest_generics_base}, device={self._rest_device_base}, data={self._rest_data_base})"
             )
 
         url = f"{base.rstrip('/')}/{path.lstrip('/')}"
@@ -300,7 +314,6 @@ class HarviaSaunaAPI:
             if not isinstance(item, dict):
                 continue
 
-            # Harvia uses "name" as identifier -> map to id
             device_id = str(item.get("id") or item.get("deviceId") or item.get("name") or "")
             if not device_id:
                 continue
@@ -319,17 +332,39 @@ class HarviaSaunaAPI:
         return out
 
     # -----------------------------
-    # State normalization (as in your snippet)
+    # Data Service
+    # -----------------------------
+
+    async def get_latest_data(self, device: HarviaDevice) -> dict[str, Any]:
+        """
+        Data Service:
+          GET /data/latest-data
+        Uses RestApi.data.https as base url.
+        """
+        await self.async_init()
+
+        if not self._rest_data_base:
+            raise RuntimeError(
+                "Harvia data endpoint not available in endpoints response "
+                f"(data={self._rest_data_base})"
+            )
+
+        # Most likely parameter name is deviceId (consistent with /devices/state)
+        data = await self.rest_call(
+            self._rest_data_base,
+            "GET",
+            "/data/latest-data",
+            params={"deviceId": device.id},
+        )
+
+        # Debug output of RESP (status + body) is already in rest_call()
+        return data if isinstance(data, dict) else {"raw": data}
+
+    # -----------------------------
+    # State normalization
     # -----------------------------
 
     def _extract_state(self, obj: dict[str, Any]) -> dict[str, Any]:
-        """Normalize /devices/state payload into the flat dict your HA entities use.
-
-        For these values we prefer the active profile values, with fallback to root state:
-          - target_temperature, humidity_setpoint
-          - heater_on_raw, steamer_on_raw, light_on_raw
-        We keep *_state fields (heater_state/steamer_state) from root because they represent actual runtime state.
-        """
         st = obj.get("state") or {}
         conn = obj.get("connectionState") or {}
 
@@ -339,7 +374,6 @@ class HarviaSaunaAPI:
         steamer = st.get("steamer") or {}
         light = st.get("light") or {}
 
-        # ---- Active profile resolution (profiles keys are strings) ----
         active_profile = st.get("activeProfile")
         raw_profiles = st.get("profiles") or {}
 
@@ -351,7 +385,6 @@ class HarviaSaunaAPI:
         except Exception:
             active_profile_dict = None
 
-        # Profile-based values (preferred)
         profile_target_temp = None
         profile_target_hum = None
         profile_heater_on = None
@@ -373,7 +406,6 @@ class HarviaSaunaAPI:
             if isinstance(light_p, dict):
                 profile_light_on = light_p.get("on")
 
-        # Keep profiles (normalized) for Select/Number UI
         norm_profiles: dict[str, dict[str, Any]] = {}
         if isinstance(raw_profiles, dict):
             for k, p in raw_profiles.items():
@@ -389,16 +421,13 @@ class HarviaSaunaAPI:
                     "light_on": (p.get("light") or {}).get("on") if isinstance(p.get("light"), dict) else None,
                 }
 
-        normalized: dict[str, Any] = {
+        return {
             "connected": conn.get("connected") if isinstance(conn, dict) else None,
-
             "display_name": st.get("displayName"),
 
-            # Targets prefer profile
             "target_temperature": profile_target_temp if profile_target_temp is not None else st.get("targetTemp"),
             "humidity_setpoint": profile_target_hum if profile_target_hum is not None else st.get("targetHum"),
 
-            # Desired state prefer profile; actual state remains root
             "heater_on_raw": profile_heater_on if profile_heater_on is not None else heater.get("on"),
             "heater_state": heater.get("state"),
 
@@ -426,7 +455,6 @@ class HarviaSaunaAPI:
 
             "profiles": norm_profiles,
         }
-        return normalized
 
     async def refresh_device_state(self, device: HarviaDevice) -> dict[str, Any]:
         """Fetch /devices/state for this device, normalize, store in device.state and return it."""
@@ -447,7 +475,7 @@ class HarviaSaunaAPI:
 
         return device.state
 
-
-
-
+    @property
+    def rest_data_base(self) -> str | None:
+        return self._rest_data_base
 
