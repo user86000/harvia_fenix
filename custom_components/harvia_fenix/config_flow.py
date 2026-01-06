@@ -71,9 +71,10 @@ class HarviaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return self.async_show_form(step_id="user", data_schema=schema, errors=errors)
 
     async def async_step_reauth(self, user_input: dict[str, Any] | None = None):
-        entry_id = user_input.get("entry_id") if user_input else None
-        if entry_id:
-            self.context["entry_id"] = entry_id
+        # entry_id kommt von HA über context, nicht user_input
+        entry_id = self.context.get("entry_id")
+        if not entry_id:
+           return self.async_abort(reason="unknown")
         return await self.async_step_reauth_confirm()
 
     async def async_step_reauth_confirm(self, user_input: dict[str, Any] | None = None):
@@ -150,5 +151,3 @@ class CannotConnect(HomeAssistantError):
     def __init__(self, reason: str = "cannot_connect") -> None:
         self.reason = reason
         super().__init__(reason)
-
-
