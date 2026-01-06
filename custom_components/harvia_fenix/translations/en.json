@@ -7,16 +7,36 @@
         "description": "Sign in with your Harvia account.",
         "data": {
           "username": "Email",
-          "password": "Password"
+          "password": "Password",
+          "endpoints_url": "Endpoints URL (optional)"
         }
+      },
+      "reauth_confirm": {
+        "title": "Re-authenticate",
+        "description": "Please enter your password again."
       }
     },
     "error": {
       "auth": "Authentication failed",
+      "invalid_auth": "Authentication failed",
+      "no_devices": "No devices found in your Harvia account",
       "unknown": "Unknown error"
     },
     "abort": {
-      "already_configured": "Already configured"
+      "already_configured": "Already configured",
+      "reauth_successful": "Re-authentication was successful",
+      "unknown": "Unknown error"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Harvia Fenix Options",
+        "data": {
+          "data_poll_interval": "Data poll interval",
+          "device_poll_interval": "Device poll interval"
+        }
+      }
     }
   }
 }
