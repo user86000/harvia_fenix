@@ -478,5 +478,3 @@ class HarviaSaunaAPI:
     @property
     def rest_data_base(self) -> str | None:
         return self._rest_data_base
-
-
