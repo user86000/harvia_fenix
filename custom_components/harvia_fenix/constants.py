@@ -20,3 +20,9 @@ POLL_INTERVAL_OPTIONS = {
 # Default labels (what we store)
 DEFAULT_DATA_POLL_LABEL = "30s"
 DEFAULT_DEVICE_POLL_LABEL = "2min"
+
+SERVICE_DEVICE_COMMAND = "device_command"
+
+ATTR_DEVICE_ID = "device_id"
+ATTR_COMMAND = "command"
+ATTR_PAYLOAD = "payload"
