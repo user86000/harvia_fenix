@@ -20,6 +20,10 @@ from .constants import DOMAIN, DATA_COORDINATOR
 from .coordinator import HarviaCoordinator
 from .api import HarviaDevice
 
+import inspect
+from homeassistant.helpers import device_registry as dr
+
+from .device_info import build_device_info
 
 # ---------------------------
 # Helpers
@@ -180,12 +184,7 @@ class HarviaStateSensor(CoordinatorEntity[HarviaCoordinator], SensorEntity):
         if spec.entity_category is not None:
             self._attr_entity_category = spec.entity_category
 
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, device.id)},
-            "name": f"Harvia {device.type}",
-            "manufacturer": "Harvia",
-            "model": device.type,
-        }
+        self._attr_device_info = build_device_info(device)
 
     @property
     def native_value(self) -> Any:
@@ -230,12 +229,7 @@ class HarviaLatestDataSensor(CoordinatorEntity[HarviaCoordinator], SensorEntity)
         if spec.entity_category is not None:
             self._attr_entity_category = spec.entity_category
 
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, device.id)},
-            "name": f"Harvia {device.type}",
-            "manufacturer": "Harvia",
-            "model": device.type,
-        }
+        self._attr_device_info = build_device_info(device)
 
     @property
     def native_value(self) -> Any:
