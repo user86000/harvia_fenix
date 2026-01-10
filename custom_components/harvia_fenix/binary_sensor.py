@@ -14,6 +14,10 @@ from .constants import DOMAIN, DATA_COORDINATOR
 from .coordinator import HarviaCoordinator
 from .api import HarviaDevice
 
+import inspect
+from homeassistant.helpers import device_registry as dr
+
+from .device_info import build_device_info
 
 def _get_latest_payload(coordinator: HarviaCoordinator, device_id: str) -> dict[str, Any] | None:
     latest_map = coordinator.data.get("latest_data", {})
@@ -84,12 +88,7 @@ class HarviaLatestDataBinarySensor(CoordinatorEntity[HarviaCoordinator], BinaryS
         if spec.entity_category is not None:
             self._attr_entity_category = spec.entity_category
 
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, device.id)},
-            "name": f"Harvia {device.type}",
-            "manufacturer": "Harvia",
-            "model": device.type,
-        }
+        self._attr_device_info = build_device_info(device)
 
     @property
     def is_on(self) -> Optional[bool]:
