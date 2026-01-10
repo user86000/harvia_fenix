@@ -475,6 +475,33 @@ class HarviaSaunaAPI:
 
         return device.state
 
+    # -----------------------------
+    # Device commands
+    # -----------------------------
+
+    async def async_send_device_command(
+        self,
+        device_id: str,
+        command: str,
+        payload: dict[str, Any] | None = None,
+    ) -> Any:
+        """POST /devices/command"""
+
+        body: dict[str, Any] = {
+            "deviceId": device_id,
+            "command": command,
+        }
+
+        if payload:
+            body["payload"] = payload
+
+        return await self._request(
+            "post",
+            "/devices/command",
+            json=body,
+        )
+
+
     @property
     def rest_data_base(self) -> str | None:
         return self._rest_data_base
