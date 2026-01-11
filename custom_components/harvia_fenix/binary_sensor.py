@@ -10,8 +10,8 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.helpers.entity import EntityCategory
 
-from .constants import DOMAIN, DATA_COORDINATOR
-from .coordinator import HarviaCoordinator
+from .constants import DOMAIN, DEVICE_COORDINATOR, DATA_COORDINATOR
+from .coordinator import HarviaDeviceCoordinator, HarviaDataCoordinator
 from .api import HarviaDevice
 
 import inspect
@@ -19,13 +19,14 @@ from homeassistant.helpers import device_registry as dr
 
 from .device_info import build_device_info
 
-def _get_latest_payload(coordinator: HarviaCoordinator, device_id: str) -> dict[str, Any] | None:
-    latest_map = coordinator.data.get("latest_data", {})
+
+def _get_latest_payload(coordinator: HarviaDataCoordinator, device_id: str) -> dict[str, Any] | None:
+    latest_map = coordinator.data.get("latest_data", {}) if coordinator.data else {}
     payload = latest_map.get(device_id)
     return payload if isinstance(payload, dict) else None
 
 
-def _get_latest_data_dict(coordinator: HarviaCoordinator, device_id: str) -> dict[str, Any] | None:
+def _get_latest_data_dict(coordinator: HarviaDataCoordinator, device_id: str) -> dict[str, Any] | None:
     payload = _get_latest_payload(coordinator, device_id)
     if not isinstance(payload, dict):
         return None
@@ -60,21 +61,23 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    coordinator: HarviaCoordinator = hass.data[DOMAIN][entry.entry_id][DATA_COORDINATOR]
-    devices: list[HarviaDevice] = coordinator.data.get("devices", [])
+    device_coordinator: HarviaDeviceCoordinator = hass.data[DOMAIN][entry.entry_id][DEVICE_COORDINATOR]
+    data_coordinator: HarviaDataCoordinator = hass.data[DOMAIN][entry.entry_id][DATA_COORDINATOR]
+
+    devices: list[HarviaDevice] = (device_coordinator.data or {}).get("devices", [])
 
     entities: list[BinarySensorEntity] = []
     for dev in devices:
         for spec in DATA_BINARY_SPECS:
-            entities.append(HarviaLatestDataBinarySensor(coordinator, dev, spec))
+            entities.append(HarviaLatestDataBinarySensor(data_coordinator, dev, spec))
 
     async_add_entities(entities)
 
 
-class HarviaLatestDataBinarySensor(CoordinatorEntity[HarviaCoordinator], BinarySensorEntity):
+class HarviaLatestDataBinarySensor(CoordinatorEntity[HarviaDataCoordinator], BinarySensorEntity):
     """Binary telemetry from latest-data['data'] (static list DATA_BINARY_SPECS)."""
 
-    def __init__(self, coordinator: HarviaCoordinator, device: HarviaDevice, spec: HarviaDataBinarySpec) -> None:
+    def __init__(self, coordinator: HarviaDataCoordinator, device: HarviaDevice, spec: HarviaDataBinarySpec) -> None:
         super().__init__(coordinator)
         self._device = device
         self._spec = spec
