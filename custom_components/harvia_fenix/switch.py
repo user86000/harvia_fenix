@@ -15,6 +15,8 @@ from .coordinator import HarviaCoordinator
 from .api import HarviaDevice
 from .device_info import build_device_info
 
+import logging
+_LOGGER = logging.getLogger(__name__)
 
 def _get_latest_payload(coordinator: HarviaCoordinator, device_id: str) -> dict[str, Any] | None:
     latest_map = coordinator.data.get("latest_data", {})
@@ -115,15 +117,23 @@ class HarviaSaunaSwitch(CoordinatorEntity[HarviaCoordinator], SwitchEntity):
         await self._async_set(False)
 
     async def _async_set(self, on: bool) -> None:
-        # API Doku: command={"type":"SAUNA","state":"on/off"}
-        await self.coordinator.api.async_send_device_command(
-            device_id=self._device.id,
-            command=self._spec.command,
-            payload={"state": on},
-        )
+        payload = {"state": on, "cabin_id": "C1"}
 
-        # Cloud + dein Polling: 30s ist realistisch -> wir holen in kurzen Abständen nach,
-        # damit die UI schneller "mitzieht".
+        try:
+            resp = await self.coordinator.api.async_send_device_command(
+                device_id=self._device.id,
+                command=self._spec.command,
+                payload=payload,
+            )
+        except Exception:
+            _LOGGER.exception(
+                "Harvia SWITCH RESP ERROR device=%s command=%s",
+                self._device.id,
+                self._spec.command,
+            )
+            raise
+
+        # Backend/Cloud + Polling: mehrere Refreshes helfen, dass der UI-Status schneller nachzieht
         await self.coordinator.async_request_refresh()
         await asyncio.sleep(3)
         await self.coordinator.async_request_refresh()
