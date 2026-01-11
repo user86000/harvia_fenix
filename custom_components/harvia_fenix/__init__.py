@@ -22,7 +22,7 @@ from .constants import (
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS: list[str] = ["sensor", "binary_sensor"]
+PLATFORMS: list[str] = ["sensor", "binary_sensor", "switch"]
 
 SERVICE_SCHEMA_DEVICE_COMMAND = vol.Schema(
     {
