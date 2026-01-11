@@ -6,8 +6,10 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
 from .api import HarviaSaunaAPI
-from .coordinator import HarviaCoordinator
-from .constants import DOMAIN, DATA_COORDINATOR, CONF_ENDPOINTS_URL, DEFAULT_ENDPOINTS_URL
+from .constants import DOMAIN, CONF_ENDPOINTS_URL, DEFAULT_ENDPOINTS_URL
+
+from .coordinator import HarviaDeviceCoordinator, HarviaDataCoordinator
+from .constants import DEVICE_COORDINATOR, DATA_COORDINATOR
 
 from homeassistant.core import ServiceCall
 from homeassistant.exceptions import HomeAssistantError
@@ -28,17 +30,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     endpoints_url = entry.data.get(CONF_ENDPOINTS_URL, DEFAULT_ENDPOINTS_URL)
 
     api = HarviaSaunaAPI(hass, username=username, password=password, endpoints_url=endpoints_url)
-    coordinator = HarviaCoordinator(hass, entry, api)
+
+    device_coordinator = HarviaDeviceCoordinator(hass, entry, api)
+    data_coordinator = HarviaDataCoordinator(hass, entry, api, device_coordinator)
 
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN][entry.entry_id] = {
         "api": api,
-        DATA_COORDINATOR: coordinator,
+        DEVICE_COORDINATOR: device_coordinator,
+        DATA_COORDINATOR: data_coordinator,
     }
 
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
 
-    await coordinator.async_config_entry_first_refresh()
+    await device_coordinator.async_config_entry_first_refresh()
+    await data_coordinator.async_config_entry_first_refresh()
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 
