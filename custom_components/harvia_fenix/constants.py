@@ -1,5 +1,4 @@
 DOMAIN = "harvia_fenix"
-DATA_COORDINATOR = "coordinator"
 
 # existing endpoints config
 CONF_ENDPOINTS_URL = "endpoints_url"
@@ -26,3 +25,6 @@ SERVICE_DEVICE_COMMAND = "device_command"
 ATTR_DEVICE_ID = "device_id"
 ATTR_COMMAND = "command"
 ATTR_PAYLOAD = "payload"
+
+DEVICE_COORDINATOR = "device_coordinator"
+DATA_COORDINATOR = "data_coordinator"
