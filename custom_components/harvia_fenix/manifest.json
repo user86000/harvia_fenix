@@ -1,7 +1,7 @@
 {
   "domain": "harvia_fenix",
   "name": "Harvia Fenix",
-  "version": "0.2.3",
+  "version": "0.2.6",
   "documentation": "https://github.com/user86000/harvia_fenix",
   "issue_tracker": "https://github.com/user86000/harvia_fenix/issues",
   "codeowners": ["@user86000"],
