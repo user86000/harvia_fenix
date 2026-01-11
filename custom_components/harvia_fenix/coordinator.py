@@ -9,7 +9,7 @@ from homeassistant.config_entries import ConfigEntry, ConfigEntryAuthFailed
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .api import HarviaSaunaAPI, HarviaDevice, HarviaAuthError
+from .api import HarviaSaunaAPI, HarviaAuthError
 from .constants import (
     CONF_DATA_POLL_INTERVAL,
     CONF_DEVICE_POLL_INTERVAL,
@@ -29,16 +29,16 @@ def _parse_interval(value: Any, default_label: str) -> int:
         return int(POLL_INTERVAL_OPTIONS.get(value, POLL_INTERVAL_OPTIONS[default_label]))
     return int(POLL_INTERVAL_OPTIONS[default_label])
 
-FIXED_TICK_SECONDS = 30  # <-- Coordinator läuft immer alle 30s
 
-class HarviaCoordinator(DataUpdateCoordinator[dict[str, Any]]):
-    def __init__(self, hass, entry, api) -> None:
+FIXED_TICK_SECONDS = 30  # Coordinator läuft immer alle 30s
+
+
+class HarviaDeviceCoordinator(DataUpdateCoordinator[dict[str, Any]]):
+    """Coordinator for devices + state (slower)."""
+
+    def __init__(self, hass: HomeAssistant, entry: ConfigEntry, api: HarviaSaunaAPI) -> None:
         self.api = api
 
-        self._data_interval = _parse_interval(
-            entry.options.get(CONF_DATA_POLL_INTERVAL, DEFAULT_DATA_POLL_LABEL),
-            DEFAULT_DATA_POLL_LABEL,
-        )
         self._device_interval = _parse_interval(
             entry.options.get(CONF_DEVICE_POLL_INTERVAL, DEFAULT_DEVICE_POLL_LABEL),
             DEFAULT_DEVICE_POLL_LABEL,
@@ -47,21 +47,17 @@ class HarviaCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         super().__init__(
             hass,
             _LOGGER,
-            name="harvia_fenix",
+            name="harvia_fenix_device",
             update_interval=timedelta(seconds=FIXED_TICK_SECONDS),
         )
 
         self._last_device_refresh: float = 0.0
-        self._last_data_refresh: float = 0.0
-
-        self._devices = []
+        self._devices: list[Any] = []
         self._states: dict[str, Any] = {}
-        self._latest_data: dict[str, Any] = {}
 
         _LOGGER.info(
-            "Harvia polling configured: tick=%ss data=%ss device/state=%ss",
+            "Harvia device/state polling configured: tick=%ss device/state=%ss",
             FIXED_TICK_SECONDS,
-            self._data_interval,
             self._device_interval,
         )
 
@@ -69,7 +65,6 @@ class HarviaCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         now = time.monotonic()
 
         try:
-            # Devices + State nach device_interval
             if (not self._devices) or (now - self._last_device_refresh) >= self._device_interval:
                 _LOGGER.debug("Harvia: refreshing devices/state (interval=%ss)", self._device_interval)
                 self._devices = await self.api.get_devices()
@@ -79,26 +74,79 @@ class HarviaCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             else:
                 _LOGGER.debug("Harvia: skipping devices/state (cached)")
 
-            # Latest data nach data_interval
+            return {
+                "devices": self._devices,
+                "states": self._states,
+            }
+
+        except HarviaAuthError as err:
+            raise ConfigEntryAuthFailed(str(err)) from err
+        except Exception as err:
+            raise UpdateFailed(f"Harvia device/state update failed: {err}") from err
+
+
+class HarviaDataCoordinator(DataUpdateCoordinator[dict[str, Any]]):
+    """Coordinator for latest-data telemetry (fast). Uses devices from HarviaDeviceCoordinator."""
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        entry: ConfigEntry,
+        api: HarviaSaunaAPI,
+        device_coordinator: HarviaDeviceCoordinator,
+    ) -> None:
+        self.api = api
+        self._device_coordinator = device_coordinator
+
+        self._data_interval = _parse_interval(
+            entry.options.get(CONF_DATA_POLL_INTERVAL, DEFAULT_DATA_POLL_LABEL),
+            DEFAULT_DATA_POLL_LABEL,
+        )
+
+        super().__init__(
+            hass,
+            _LOGGER,
+            name="harvia_fenix_data",
+            update_interval=timedelta(seconds=FIXED_TICK_SECONDS),
+        )
+
+        self._last_data_refresh: float = 0.0
+        self._latest_data: dict[str, Any] = {}
+
+        _LOGGER.info(
+            "Harvia latest-data polling configured: tick=%ss data=%ss",
+            FIXED_TICK_SECONDS,
+            self._data_interval,
+        )
+
+    async def _async_update_data(self) -> dict[str, Any]:
+        now = time.monotonic()
+
+        try:
             if (now - self._last_data_refresh) >= self._data_interval:
                 _LOGGER.debug("Harvia: refreshing latest-data (interval=%ss)", self._data_interval)
-                for dev in self._devices:
+
+                devices: list[Any] = self._device_coordinator.data.get("devices", []) if self._device_coordinator.data else []
+                if not devices:
+                    # Falls device coordinator noch nichts hat, einmal anstoßen
+                    await self._device_coordinator.async_request_refresh()
+                    devices = self._device_coordinator.data.get("devices", []) if self._device_coordinator.data else []
+
+                for dev in devices:
                     try:
                         self._latest_data[dev.id] = await self.api.get_latest_data(dev)
                     except Exception as err:
                         _LOGGER.debug("Harvia latest-data failed for %s: %s", dev.id, err)
+
                 self._last_data_refresh = now
             else:
                 _LOGGER.debug("Harvia: skipping latest-data (cached)")
 
             return {
-                "devices": self._devices,
-                "states": self._states,
                 "latest_data": self._latest_data,
             }
 
         except HarviaAuthError as err:
             raise ConfigEntryAuthFailed(str(err)) from err
         except Exception as err:
-            raise UpdateFailed(f"Harvia update failed: {err}") from err
-
+            raise UpdateFailed(f"Harvia latest-data update failed: {err}") from err
