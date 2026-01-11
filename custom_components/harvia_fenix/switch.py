@@ -10,21 +10,22 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .constants import DOMAIN, DATA_COORDINATOR
-from .coordinator import HarviaCoordinator
+from .constants import DOMAIN, DEVICE_COORDINATOR, DATA_COORDINATOR
+from .coordinator import HarviaDeviceCoordinator, HarviaDataCoordinator
 from .api import HarviaDevice
 from .device_info import build_device_info
 
 import logging
 _LOGGER = logging.getLogger(__name__)
 
-def _get_latest_payload(coordinator: HarviaCoordinator, device_id: str) -> dict[str, Any] | None:
-    latest_map = coordinator.data.get("latest_data", {})
+
+def _get_latest_payload(coordinator: HarviaDataCoordinator, device_id: str) -> dict[str, Any] | None:
+    latest_map = coordinator.data.get("latest_data", {}) if coordinator.data else {}
     payload = latest_map.get(device_id)
     return payload if isinstance(payload, dict) else None
 
 
-def _get_latest_data_dict(coordinator: HarviaCoordinator, device_id: str) -> dict[str, Any] | None:
+def _get_latest_data_dict(coordinator: HarviaDataCoordinator, device_id: str) -> dict[str, Any] | None:
     payload = _get_latest_payload(coordinator, device_id)
     if not isinstance(payload, dict):
         return None
@@ -63,30 +64,43 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    coordinator: HarviaCoordinator = hass.data[DOMAIN][entry.entry_id][DATA_COORDINATOR]
-    devices: list[HarviaDevice] = coordinator.data.get("devices", [])
+    device_coordinator: HarviaDeviceCoordinator = hass.data[DOMAIN][entry.entry_id][DEVICE_COORDINATOR]
+    devices: list[HarviaDevice] = (device_coordinator.data or {}).get("devices", [])
 
     entities: list[SwitchEntity] = []
     for dev in devices:
         for spec in SWITCH_SPECS:
-            entities.append(HarviaSaunaSwitch(coordinator, dev, spec))
+            entities.append(HarviaSaunaSwitch(hass, entry.entry_id, device_coordinator, dev, spec))
 
     async_add_entities(entities)
 
 
-class HarviaSaunaSwitch(CoordinatorEntity[HarviaCoordinator], SwitchEntity):
-    """Sauna power switch. Status follows states[device_id]['sauna_status']."""
+class HarviaSaunaSwitch(CoordinatorEntity[HarviaDeviceCoordinator], SwitchEntity):
+    """Sauna power switch. Status follows states[device_id]['sauna_status'] (device coordinator)."""
 
     _attr_icon = "mdi:sauna"
 
-    def __init__(self, coordinator: HarviaCoordinator, device: HarviaDevice, spec: HarviaSwitchSpec) -> None:
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        entry_id: str,
+        coordinator: HarviaDeviceCoordinator,
+        device: HarviaDevice,
+        spec: HarviaSwitchSpec,
+    ) -> None:
         super().__init__(coordinator)
+        self._hass = hass
+        self._entry_id = entry_id
         self._device = device
         self._spec = spec
 
         self._attr_unique_id = f"{device.id}_switch_{spec.command.lower()}"
         self._attr_name = f"Harvia {device.type} {spec.name}"
         self._attr_device_info = build_device_info(device)
+
+    @property
+    def _data_coordinator(self) -> HarviaDataCoordinator:
+        return self._hass.data[DOMAIN][self._entry_id][DATA_COORDINATOR]
 
     @property
     def is_on(self) -> Optional[bool]:
@@ -96,17 +110,18 @@ class HarviaSaunaSwitch(CoordinatorEntity[HarviaCoordinator], SwitchEntity):
 
         val = state.get("sauna_status")
 
-        # 1/0, True/False, "on/off" abfangen
-        if isinstance(val, bool):
-            return val
-        if isinstance(val, (int, float)):
-            return bool(int(val))
-        if isinstance(val, str):
-            s = val.strip().lower()
-            if s in ("1", "true", "on", "running", "active", "heating", "started"):
-                return True
-            if s in ("0", "false", "off", "inactive", "stopped", "standby", "idle", "ready"):
-                return False
+        # Explizite Harvia-Logik:
+        # 1 = ON
+        # 0 = OFF
+        try:
+            iv = int(val)
+        except (TypeError, ValueError):
+            return None
+
+        if iv == 1:
+            return True
+        if iv in (0, 2, 3):
+            return False
 
         return None
 
@@ -135,33 +150,22 @@ class HarviaSaunaSwitch(CoordinatorEntity[HarviaCoordinator], SwitchEntity):
 
         # Backend/Cloud + Polling: mehrere Refreshes helfen, dass der UI-Status schneller nachzieht
         await self.coordinator.async_request_refresh()
+        await self._data_coordinator.async_request_refresh()
         await asyncio.sleep(3)
         await self.coordinator.async_request_refresh()
+        await self._data_coordinator.async_request_refresh()
         await asyncio.sleep(6)
         await self.coordinator.async_request_refresh()
+        await self._data_coordinator.async_request_refresh()
 
     @property
     def extra_state_attributes(self) -> dict[str, Any] | None:
-        # Debug: zeig beide Quellen, damit du siehst, wer hinterherhinkt
-        state = self.coordinator.data.get("states", {}).get(self._device.id, {})
-        data = _get_latest_data_dict(self.coordinator, self._device.id) or {}
-
-        attrs: dict[str, Any] = {
-            "states_sauna_status": state.get("sauna_status") if isinstance(state, dict) else None,
-            "latest_onOffTrigger": data.get("onOffTrigger") if isinstance(data, dict) else None,
-            "latest_heatOn": data.get("heatOn") if isinstance(data, dict) else None,
-            "latest_steamOn": data.get("steamOn") if isinstance(data, dict) else None,
-        }
-
         payload = _get_latest_payload(self.coordinator, self._device.id)
-        if isinstance(payload, dict):
-            attrs.update(
-                {
-                    "timestamp": payload.get("timestamp"),
-                    "shadowName": payload.get("shadowName"),
-                    "subId": payload.get("subId"),
-                    "type": payload.get("type"),
-                }
-            )
-
-        return attrs
+        if not isinstance(payload, dict):
+            return None
+        return {
+            "timestamp": payload.get("timestamp"),
+            "shadowName": payload.get("shadowName"),
+            "subId": payload.get("subId"),
+            "type": payload.get("type"),
+        }
