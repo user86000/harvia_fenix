@@ -199,6 +199,69 @@ class HarviaSaunaAPI:
         self._apply_token_payload(data, keep_refresh_if_missing=True)
         _LOGGER.info("Harvia token refresh OK (idToken=%s)", bool(self._tokens.id_token))
         return bool(self._tokens.id_token)
+    
+    
+        
+    async def _revoke(self) -> bool:
+        assert self._session is not None
+        assert self._rest_generics_base is not None
+
+        if not self._tokens.refresh_token:
+           _LOGGER.debug("Harvia revoke skipped: no refresh_token")
+           return False
+
+        url = f"{self._rest_generics_base}/auth/revoke"
+        payload = {
+           "refreshToken": self._tokens.refresh_token,
+           "email": self._username,
+           "username": self._username,
+        }
+
+        _LOGGER.debug("Harvia AUTH REVOKE POST %s", url)
+
+        async with self._session.post(
+            url,
+            json=payload,
+            timeout=aiohttp.ClientTimeout(total=20),
+            headers={"Accept": "application/json"},
+        ) as resp:
+            text = await resp.text()
+
+            # DEBUG: Response komplett (ohne Secrets)
+            _LOGGER.debug(
+                "Harvia AUTH REVOKE RESP %s %s content-type=%s body=%s",
+                resp.status,
+                url,
+                resp.headers.get("content-type"),
+                text,
+            )
+
+            if resp.status in (401, 403):
+                _LOGGER.warning("Harvia revoke rejected (%s): %s", resp.status, text)
+                return False
+            if resp.status >= 400:
+                _LOGGER.warning("Harvia revoke failed (%s): %s", resp.status, text)
+                return False
+
+        # Tokens lokal löschen
+        self._tokens.id_token = None
+        self._tokens.access_token = None
+        self._tokens.refresh_token = None
+        self._tokens.expires_at = None
+
+        _LOGGER.info("Harvia token revoke OK (tokens cleared)")
+        return True
+
+
+    async def async_revoke_tokens(self) -> bool:
+        await self.async_init()
+        return await self._revoke()
+
+    
+    
+
+  
+        
 
     def _apply_token_payload(self, data: dict[str, Any], *, keep_refresh_if_missing: bool) -> None:
         id_token = data.get("idToken") or data.get("id_token")
@@ -492,29 +555,37 @@ class HarviaSaunaAPI:
         await self.async_init()
         assert self._rest_device_base is not None
 
-        cabin_id = "C1"
-
-        command_fields: dict[str, Any] = {"type": command}
-
-        if payload:
-            if "state" in payload:
-                st = payload["state"]
-                if isinstance(st, bool):
-                    command_fields["state"] = "on" if st else "off"
-                elif isinstance(st, (int, float)):
-                    command_fields["state"] = "on" if int(st) else "off"
-                else:
-                    command_fields["state"] = str(st)
-            elif "on" in payload:
-                command_fields["state"] = "on" if payload["on"] else "off"
-            elif "value" in payload:
-                command_fields["state"] = "on" if payload["value"] else "off"
-
+        # Body im API-Doku-Format:
+        # {"deviceId": "...", "cabin": {"id": "C1"}, "command": {"type": "SAUNA", "state": "on"}}
         body: dict[str, Any] = {
             "deviceId": device_id,
-            "cabin": {"id": cabin_id},
-            "command": command_fields,
+            "command": {"type": command},
         }
+
+        # cabin_id optional aus payload übernehmen
+        if payload and "cabin_id" in payload:
+            cabin_id = payload.get("cabin_id")
+            if cabin_id:
+                body["cabin"] = {"id": cabin_id}
+
+        # payload in command mappen
+        if payload:
+            cmd = body["command"]
+
+            # state: bool -> "on"/"off" (wie in Doku)
+            if "state" in payload:
+                st = payload.get("state")
+                if isinstance(st, bool):
+                    cmd["state"] = "on" if st else "off"
+                else:
+                    cmd["state"] = st  # falls du schon "on"/"off" übergibst
+
+            # wenn du zusätzlich weitere Felder sendest (z.B. data/onOffTrigger),
+            # sende sie als "data" (oder direkt, wenn deine API das so erwartet)
+            extra = {k: v for k, v in payload.items() if k not in ("cabin_id", "state")}
+            if extra:
+                # konservativ als data-Block
+                cmd.setdefault("data", {}).update(extra)
 
         _LOGGER.debug(
             "Harvia REST REQ POST %s/devices/command body=%s",
@@ -536,6 +607,7 @@ class HarviaSaunaAPI:
         )
 
         return resp
+
 
 
     @property
