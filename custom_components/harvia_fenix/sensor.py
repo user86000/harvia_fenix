@@ -16,8 +16,8 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.helpers.entity import EntityCategory
 
-from .constants import DOMAIN, DATA_COORDINATOR
-from .coordinator import HarviaCoordinator
+from .constants import DOMAIN, DEVICE_COORDINATOR, DATA_COORDINATOR
+from .coordinator import HarviaDeviceCoordinator, HarviaDataCoordinator
 from .api import HarviaDevice
 
 import inspect
@@ -33,13 +33,13 @@ def _get(state: dict[str, Any], key: str) -> Any:
     return state.get(key) if isinstance(state, dict) else None
 
 
-def _get_latest_payload(coordinator: HarviaCoordinator, device_id: str) -> dict[str, Any] | None:
-    latest_map = coordinator.data.get("latest_data", {})
+def _get_latest_payload(coordinator: HarviaDataCoordinator, device_id: str) -> dict[str, Any] | None:
+    latest_map = coordinator.data.get("latest_data", {}) if coordinator.data else {}
     payload = latest_map.get(device_id)
     return payload if isinstance(payload, dict) else None
 
 
-def _get_latest_data_dict(coordinator: HarviaCoordinator, device_id: str) -> dict[str, Any] | None:
+def _get_latest_data_dict(coordinator: HarviaDataCoordinator, device_id: str) -> dict[str, Any] | None:
     payload = _get_latest_payload(coordinator, device_id)
     if not isinstance(payload, dict):
         return None
@@ -58,7 +58,7 @@ class HarviaSensorSpec:
     unit: Optional[str]
     value_fn: Callable[[dict[str, Any]], Any]
     entity_category: EntityCategory | None = None
-    with_attributes: bool = False  # NEW: control extra attrs per spec
+    with_attributes: bool = False  # control extra attrs per spec
 
 
 STATE_SPECS: list[HarviaSensorSpec] = [
@@ -95,10 +95,7 @@ STATE_SPECS: list[HarviaSensorSpec] = [
     HarviaSensorSpec("remote_allowed", "Remote Allowed", None, lambda s: _get(s, "remote_allowed")),
     HarviaSensorSpec("demo_mode", "Demo Mode", None, lambda s: _get(s, "demo_mode"), EntityCategory.DIAGNOSTIC),
 
-    # ✅ NEW: profiledata (has attributes)
     HarviaSensorSpec("profiledata", "Profile Data", None, lambda s: _get(s, "active_profile"), with_attributes=True),
-
-    # ✅ NEW: active_profile (no attributes)
     HarviaSensorSpec("active_profile", "Active Profile", None, lambda s: _get(s, "active_profile"), with_attributes=False),
 
     HarviaSensorSpec("sauna_status", "Sauna Status", None, lambda s: _get(s, "sauna_status")),
@@ -150,17 +147,18 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    coordinator: HarviaCoordinator = hass.data[DOMAIN][entry.entry_id][DATA_COORDINATOR]
+    device_coordinator: HarviaDeviceCoordinator = hass.data[DOMAIN][entry.entry_id][DEVICE_COORDINATOR]
+    data_coordinator: HarviaDataCoordinator = hass.data[DOMAIN][entry.entry_id][DATA_COORDINATOR]
 
-    devices: list[HarviaDevice] = coordinator.data.get("devices", [])
+    devices: list[HarviaDevice] = (device_coordinator.data or {}).get("devices", [])
     entities: list[SensorEntity] = []
 
     for dev in devices:
         for spec in STATE_SPECS:
-            entities.append(HarviaStateSensor(coordinator, dev, spec))
+            entities.append(HarviaStateSensor(device_coordinator, dev, spec))
 
         for dspec in DATA_SPECS:
-            entities.append(HarviaLatestDataSensor(coordinator, dev, dspec))
+            entities.append(HarviaLatestDataSensor(data_coordinator, dev, dspec))
 
     async_add_entities(entities)
 
@@ -169,8 +167,8 @@ async def async_setup_entry(
 # Entities
 # ---------------------------
 
-class HarviaStateSensor(CoordinatorEntity[HarviaCoordinator], SensorEntity):
-    def __init__(self, coordinator: HarviaCoordinator, device: HarviaDevice, spec: HarviaSensorSpec) -> None:
+class HarviaStateSensor(CoordinatorEntity[HarviaDeviceCoordinator], SensorEntity):
+    def __init__(self, coordinator: HarviaDeviceCoordinator, device: HarviaDevice, spec: HarviaSensorSpec) -> None:
         super().__init__(coordinator)
         self._device = device
         self._spec = spec
@@ -188,18 +186,17 @@ class HarviaStateSensor(CoordinatorEntity[HarviaCoordinator], SensorEntity):
 
     @property
     def native_value(self) -> Any:
-        state = self.coordinator.data.get("states", {}).get(self._device.id)
+        state = (self.coordinator.data or {}).get("states", {}).get(self._device.id)
         if not isinstance(state, dict):
             return None
         return self._spec.value_fn(state)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any] | None:
-        # ✅ attributes ONLY for profiledata
         if not self._spec.with_attributes:
             return None
 
-        state = self.coordinator.data.get("states", {}).get(self._device.id)
+        state = (self.coordinator.data or {}).get("states", {}).get(self._device.id)
         if not isinstance(state, dict):
             return None
 
@@ -211,8 +208,8 @@ class HarviaStateSensor(CoordinatorEntity[HarviaCoordinator], SensorEntity):
         }
 
 
-class HarviaLatestDataSensor(CoordinatorEntity[HarviaCoordinator], SensorEntity):
-    def __init__(self, coordinator: HarviaCoordinator, device: HarviaDevice, spec: HarviaDataSensorSpec) -> None:
+class HarviaLatestDataSensor(CoordinatorEntity[HarviaDataCoordinator], SensorEntity):
+    def __init__(self, coordinator: HarviaDataCoordinator, device: HarviaDevice, spec: HarviaDataSensorSpec) -> None:
         super().__init__(coordinator)
         self._device = device
         self._spec = spec
@@ -249,4 +246,3 @@ class HarviaLatestDataSensor(CoordinatorEntity[HarviaCoordinator], SensorEntity)
             "subId": payload.get("subId"),
             "type": payload.get("type"),
         }
-
