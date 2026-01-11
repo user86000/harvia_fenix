@@ -479,6 +479,8 @@ class HarviaSaunaAPI:
     # Device commands
     # -----------------------------
 
+    # ...
+
     async def async_send_device_command(
         self,
         device_id: str,
@@ -487,19 +489,53 @@ class HarviaSaunaAPI:
     ) -> Any:
         """POST /devices/command"""
 
-        body: dict[str, Any] = {
-            "deviceId": device_id,
-            "command": command,
-        }
+        await self.async_init()
+        assert self._rest_device_base is not None
+
+        cabin_id = "C1"
+
+        command_fields: dict[str, Any] = {"type": command}
 
         if payload:
-            body["payload"] = payload
+            if "state" in payload:
+                st = payload["state"]
+                if isinstance(st, bool):
+                    command_fields["state"] = "on" if st else "off"
+                elif isinstance(st, (int, float)):
+                    command_fields["state"] = "on" if int(st) else "off"
+                else:
+                    command_fields["state"] = str(st)
+            elif "on" in payload:
+                command_fields["state"] = "on" if payload["on"] else "off"
+            elif "value" in payload:
+                command_fields["state"] = "on" if payload["value"] else "off"
 
-        return await self._request(
-            "post",
-            "/devices/command",
-            json=body,
+        body: dict[str, Any] = {
+            "deviceId": device_id,
+            "cabin": {"id": cabin_id},
+            "command": command_fields,
+        }
+
+        _LOGGER.debug(
+            "Harvia REST REQ POST %s/devices/command body=%s",
+            self._rest_device_base,
+            body,
         )
+
+        resp = await self.rest_call(
+            self._rest_device_base,
+            "POST",
+            "/devices/command",
+            json_body=body,
+        )
+
+        _LOGGER.debug(
+            "Harvia REST RESP POST %s/devices/command body=%s",
+            self._rest_device_base,
+            resp,
+        )
+
+        return resp
 
 
     @property
