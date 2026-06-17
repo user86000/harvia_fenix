@@ -14,6 +14,11 @@ from .constants import DEVICE_COORDINATOR, DATA_COORDINATOR
 from homeassistant.core import ServiceCall
 from homeassistant.exceptions import HomeAssistantError
 
+import voluptuous as vol
+from homeassistant.helpers import config_validation as cv
+
+CONFIG_SCHEMA = cv.empty_config_schema("harvia_fenix")
+
 _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS: list[str] = ["sensor", "binary_sensor", "switch"]
