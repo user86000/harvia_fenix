@@ -17,8 +17,7 @@ jobs:
         uses: hacs/action@main
         with:
           category: integration
-
- hassfest:
+hassfest:
    name: Hassfest validation
    runs-on: ubuntu-latest
    steps:
